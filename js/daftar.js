@@ -53,9 +53,6 @@
        const selisihClass = selisih > 0 ? "sel-plus" : (selisih < 0 ? "sel-minus" : "");
        tr.innerHTML = `
          <td>${escapeHtml(item.nama)}</td>
-         <td>${escapeHtml(item.petugas || "-")}</td>
-         <td>${formatTanggal(item.tanggal)}</td>
-         <td class="${selisihClass}">${formatRupiah(selisih)}</td>
          <td style="text-align:right;white-space:nowrap;">
            <a class="btn-lihat" href="detail.html?id=${encodeURIComponent(item.id)}">Lihat</a>
            <button type="button" class="btn-hapus-row" data-id="${item.id}">Hapus</button>
