@@ -1,219 +1,237 @@
-const DATA_URL = "data/data.json";
+/* ================================================================
+   js/detail.js — dipakai oleh detail.html
+   Ganti API_URL sesuai lokasi folder "api" di server Anda.
+   ================================================================ */
+const API_URL = "http://localhost/SENSUS/api";
 
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;").replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;").replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
+const loadingEl = document.getElementById("loading");
+const contentEl = document.getElementById("detailContent");
+
+function formatRupiah(num){
+  const rounded = Math.round(num || 0);
+  const sign = rounded < 0 ? "-" : "";
+  const abs = Math.abs(rounded).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  return "Rp " + sign + abs;
 }
 
-function hasValue(value) {
-  return value !== null && value !== undefined && String(value).trim() !== "";
+function formatTanggal(iso){
+  try{
+    return new Date(iso).toLocaleString("id-ID", { day:"numeric", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit" });
+  }catch(e){ return iso; }
 }
 
-function formatRupiah(value) {
-  return "Rp " + new Intl.NumberFormat("id-ID").format(Number(value || 0));
+function escapeHtml(str){
+  const d = document.createElement("div");
+  d.textContent = str == null ? "" : String(str);
+  return d.innerHTML;
 }
 
-function formatTanggal(value) {
-  if (!value) return "-";
-  const d = new Date(String(value).replace(" ", "T"));
-  if (Number.isNaN(d.getTime())) return escapeHtml(value);
-  return d.toLocaleDateString("id-ID", {
-    day:"2-digit", month:"long", year:"numeric"
-  });
-}
-
-function text(value) {
-  return hasValue(value) ? escapeHtml(value) : "";
-}
-
-function money(value) {
-  return hasValue(value) && Number(value) !== 0 ? formatRupiah(value) : "";
-}
-
-function detailRow(label, value) {
-  if (!hasValue(value)) return "";
-  return `<div class="detail-row">
-    <span class="detail-label">${escapeHtml(label)}</span>
-    <span class="detail-value">${value}</span>
+/* ---------- helper untuk membangun satu baris "info-item" ---------- */
+function infoItem(label, value, wide){
+  if(value === "" || value == null) return "";
+  return `<div class="info-item${wide ? " wide" : ""}">
+    <span class="info-label">${label}</span>
+    <span class="info-value">${value}</span>
   </div>`;
 }
-
-function section(title, content) {
-  if (!content || !String(content).trim()) return "";
-  return `<section class="detail-block">
-    <h2>${escapeHtml(title)}</h2>${content}
-  </section>`;
+function infoMoney(label, num){
+  if(!num) return "";
+  return infoItem(label, formatRupiah(num));
+}
+function infoText(label, val){
+  const clean = (val || "").toString().trim();
+  if(!clean) return "";
+  return infoItem(label, escapeHtml(clean));
+}
+function infoNum(label, num, satuan){
+  if(!num) return "";
+  return infoItem(label, num + (satuan ? " " + satuan : ""));
+}
+function chips(list){
+  return `<div class="tags">${list.map(v => `<span class="chip">${escapeHtml(v)}</span>`).join("")}</div>`;
 }
 
-function buildDetailHtml(r) {
-  const kkTertaut = Array.isArray(r.kkTertaut) ? r.kkTertaut.filter(hasValue) : [];
-  const anggotaLain = Array.isArray(r.anggotaLain)
-    ? r.anggotaLain
-    : (Array.isArray(r.anggotaLainList) ? r.anggotaLainList : []);
-  const usahaList = Array.isArray(r.usahaList) ? r.usahaList : [];
+/* ---------- susun seluruh halaman detail ---------- */
+function buildDetailHtml(r){
+  const u = r.umum, p = r.pendapatanRT, g = r.pengeluaranRT, s = r.ringkasan;
+  let html = `<div class="detail-content">`;
 
-  let umum = "";
-  umum += detailRow("Petugas", text(r.petugas));
-  umum += detailRow("No. urut bangunan", text(r.no_urut_bangunan));
-  umum += detailRow("Jenis bangunan", text(r.jenis_bangunan));
-  umum += detailRow("Anggota menetap", text(r.anggota_menetap));
-  umum += detailRow("ID listrik", text(r.id_listrik));
-
-  if (kkTertaut.length) {
-    umum += `<div class="detail-row detail-row-wide">
-      <span class="detail-label">KK tertaut</span>
-      <span class="detail-value chip-list">
-        ${kkTertaut.map(x => `<span class="chip">${escapeHtml(x)}</span>`).join("")}
-      </span>
-    </div>`;
-  }
-
-  let pendapatan = "";
-  pendapatan += detailRow("Suami — bekerja", text(r.suami_kerja));
-  pendapatan += detailRow("Suami — pekerjaan", text(r.suami_pekerjaan));
-  pendapatan += detailRow("Suami — usaha sendiri", text(r.suami_usaha));
-  pendapatan += detailRow("Suami — transfer", money(r.suami_transfer));
-  pendapatan += detailRow("Istri — bekerja", text(r.istri_kerja));
-  pendapatan += detailRow("Istri — pekerjaan", text(r.istri_pekerjaan));
-  pendapatan += detailRow("Istri — usaha sendiri", text(r.istri_usaha));
-  pendapatan += detailRow("Istri — transfer", money(r.istri_transfer));
-
-  let pengeluaran = "";
-  pengeluaran += detailRow("Listrik", money(r.listrik));
-  pengeluaran += detailRow("WiFi", money(r.wifi));
-  pengeluaran += detailRow("Non-makan bulanan", money(r.nonmakan_bulanan));
-  pengeluaran += detailRow("Makan mingguan", money(r.makan_minggu));
-  pengeluaran += detailRow("Non-makan tahunan", money(r.nonmakan_tahunan));
-
-  let usahaHtml = "";
-  if (usahaList.length) {
-    usahaHtml = usahaList.map((u, i) => {
-      let rows = "";
-      rows += detailRow("Nama pengusaha", text(u.nama_pengusaha));
-      rows += detailRow("Nama usaha", text(u.nama_usaha));
-      rows += detailRow("Kegiatan", text(u.kegiatan));
-      rows += detailRow("Alamat", text(u.alamat));
-      rows += detailRow("Lokasi", text(u.lokasi));
-      rows += detailRow("NIB", text(u.nib));
-      rows += detailRow("Tahun mulai", text(u.tahun_mulai));
-      rows += detailRow("Karyawan laki-laki", text(u.karyawan_l));
-      rows += detailRow("Karyawan perempuan", text(u.karyawan_p));
-      rows += detailRow("Karyawan dibayar", text(u.karyawan_dibayar));
-      rows += detailRow("Karyawan tidak dibayar", text(u.karyawan_tidak_dibayar));
-      rows += detailRow("Gaji", money(u.gaji));
-      rows += detailRow("Biaya produksi", money(u.biaya_produksi));
-      rows += detailRow("Biaya pembelian", money(u.biaya_pembelian));
-      rows += detailRow("Biaya operasional", money(u.biaya_operasional));
-      rows += detailRow("Biaya non-operasional", money(u.biaya_non_operasional));
-      rows += detailRow("Pendapatan utama", money(u.pendapatan_utama));
-      rows += detailRow("Pendapatan lainnya", money(u.pendapatan_lainnya));
-      rows += detailRow("Aset tanah", money(u.aset_tanah));
-      rows += detailRow("Aset non-bangunan", money(u.aset_non_bangunan));
-      rows += detailRow("Luas bangunan", text(u.luas_bangunan));
-
-      const jenis = Array.isArray(u.jenisUsaha) ? u.jenisUsaha.filter(hasValue) : [];
-      const jenisHtml = jenis.length ? `<div class="usaha-jenis">
-        <span class="detail-label">Jenis usaha</span>
-        <div class="chip-list">${jenis.map(j => `<span class="chip">${escapeHtml(j)}</span>`).join("")}</div>
-      </div>` : "";
-
-      return `<div class="usaha-card">
-        <h3>Usaha ${i + 1}${hasValue(u.nama_usaha) ? ` — ${escapeHtml(u.nama_usaha)}` : ""}</h3>
-        <div class="detail-grid">${rows}</div>${jenisHtml}
-      </div>`;
-    }).join("");
-  }
-
-  let anggotaHtml = "";
-  const anggotaValid = anggotaLain.filter(a => a && Object.values(a).some(hasValue));
-  if (anggotaValid.length) {
-    anggotaHtml = anggotaValid.map((a, i) => {
-      let rows = "";
-      rows += detailRow("Nama", text(a.nama));
-      rows += detailRow("Pekerjaan", text(a.pekerjaan));
-      rows += detailRow("Bekerja", text(a.kerja));
-      rows += detailRow("Usaha sendiri", text(a.usaha_sendiri));
-      rows += detailRow("Transfer", money(a.transfer));
-      return `<div class="member-card">
-        <h3>Anggota lain ${i + 1}</h3>
-        <div class="detail-grid">${rows}</div>
-      </div>`;
-    }).join("");
-  }
-
-  const selisih = Number(r.selisih || 0);
-
-  const summary = `
-    <div class="detail-summary">
-      ${hasValue(r.pendapatan_rumah_tangga) ? `<div class="summary-card">
-        <div class="label">Pendapatan rumah tangga</div>
-        <div class="value">${formatRupiah(r.pendapatan_rumah_tangga)}</div>
-      </div>` : ""}
-      ${hasValue(r.pengeluaran_rumah_tangga) ? `<div class="summary-card">
-        <div class="label">Pengeluaran rumah tangga</div>
-        <div class="value">${formatRupiah(r.pengeluaran_rumah_tangga)}</div>
-      </div>` : ""}
-      ${Number(r.pendapatan_usaha || 0) !== 0 ? `<div class="summary-card">
-        <div class="label">Pendapatan usaha</div>
-        <div class="value">${formatRupiah(r.pendapatan_usaha)}</div>
-      </div>` : ""}
-      ${Number(r.pengeluaran_usaha || 0) !== 0 ? `<div class="summary-card">
-        <div class="label">Pengeluaran usaha</div>
-        <div class="value">${formatRupiah(r.pengeluaran_usaha)}</div>
-      </div>` : ""}
-    </div>
-    <div class="summary-final">
-      <span>Selisih akhir</span>
-      <strong class="${selisih >= 0 ? "selisih-plus" : "selisih-minus"}">${formatRupiah(selisih)}</strong>
-    </div>`;
-
-  return `<div class="detail-content">
-    <h1 class="detail-title">${text(r.kk_nama) || "Tanpa Nama"}</h1>
+  // ---- hero: nama KK + info singkat ----
+  html += `<div class="detail-hero">
+    <div class="eyebrow">Kartu Keluarga</div>
+    <h1>${escapeHtml(u.kkNama) || "(Tanpa Nama)"}</h1>
     <div class="detail-meta">
-      ${hasValue(r.petugas) ? `<span>Petugas: <strong>${text(r.petugas)}</strong></span>` : ""}
-      ${hasValue(r.created_at) ? `<span>${formatTanggal(r.created_at)}</span>` : ""}
+      ${u.noUrutBangunan ? `<span>No. Urut ${escapeHtml(u.noUrutBangunan)}</span>` : ""}
+      ${u.jenisBangunan ? `<span>${escapeHtml(u.jenisBangunan)}</span>` : ""}
+      ${u.anggotaMenetap ? `<span>${u.anggotaMenetap} orang menetap</span>` : ""}
+      ${r.petugas ? `<span>Petugas: ${escapeHtml(r.petugas)}</span>` : ""}
+      <span>Disimpan ${formatTanggal(r.tanggal)}</span>
     </div>
-
-    ${section("Data Umum", `<div class="detail-grid">${umum}</div>`)}
-    ${section("Usaha Keluarga", usahaHtml)}
-    ${section("Pendapatan Rumah Tangga", `<div class="detail-grid">${pendapatan}</div>`)}
-    ${section("Anggota Lain", anggotaHtml)}
-    ${section("Pengeluaran Rumah Tangga", `<div class="detail-grid">${pengeluaran}</div>`)}
-    ${section("Ringkasan", summary)}
   </div>`;
+
+  // ---- 1. Data Umum ----
+  html += `<div class="detail-section">
+    <div class="section-heading"><div class="section-icon">1</div><h2>Data Umum</h2></div>
+    <div class="info-grid">
+      ${infoText("No. ID Pelanggan Listrik", u.idListrik)}
+      ${infoNum("Anggota Menetap", u.anggotaMenetap, "orang")}
+      ${(u.kkTertaut && u.kkTertaut.length) ? `<div class="info-item wide"><span class="info-label">KK Tertaut</span>${chips(u.kkTertaut)}</div>` : ""}
+    </div>
+  </div>`;
+
+  // ---- 2. Usaha Keluarga (kalau ada) ----
+  if(r.usahaList && r.usahaList.length){
+    html += `<div class="detail-section">
+      <div class="section-heading"><div class="section-icon">2</div><h2>Usaha Keluarga</h2></div>
+      <div class="usaha-list">`;
+    r.usahaList.forEach((us, idx)=>{
+      const totalPengeluaranUsaha = us.gaji + us.biayaProduksi + us.biayaPembelian + us.biayaOperasional + us.biayaNonOperasional;
+      const totalPendapatanUsaha = us.pendapatanUtama + us.pendapatanLainnya;
+      html += `<div class="usaha-card">
+        <div class="card-title"><span>Usaha ${idx+1}</span><strong>${escapeHtml(us.namaUsaha) || "(Tanpa Nama)"}</strong></div>
+        ${(us.jenisUsaha && us.jenisUsaha.length) ? `<div class="usaha-tags"><span>Jenis</span>${chips(us.jenisUsaha)}</div>` : ""}
+        <div class="info-grid single">
+          ${infoText("Pengusaha", us.namaPengusaha)}
+          ${infoText("Alamat", us.alamat)}
+          ${infoText("NIB", us.nib)}
+          ${infoText("Lokasi", us.lokasi)}
+          ${infoText("Kegiatan", us.kegiatan)}
+          ${infoText("Tahun Mulai", us.tahunMulai)}
+          ${infoNum("Karyawan Laki-laki", us.karyawanL, "orang")}
+          ${infoNum("Karyawan Perempuan", us.karyawanP, "orang")}
+          ${infoNum("Karyawan Dibayar", us.karyawanDibayar, "orang")}
+          ${infoNum("Karyawan Tidak Dibayar", us.karyawanTidakDibayar, "orang")}
+          ${infoMoney("Gaji Karyawan", us.gaji)}
+          ${infoMoney("Biaya Produksi", us.biayaProduksi)}
+          ${infoMoney("Biaya Pembelian", us.biayaPembelian)}
+          ${infoMoney("Biaya Operasional", us.biayaOperasional)}
+          ${infoMoney("Biaya Non-Operasional", us.biayaNonOperasional)}
+          ${infoItem("Total Pengeluaran Usaha", formatRupiah(totalPengeluaranUsaha), true)}
+          ${infoMoney("Pendapatan Utama", us.pendapatanUtama)}
+          ${infoMoney("Pendapatan Lainnya", us.pendapatanLainnya)}
+          ${infoItem("Total Pendapatan Usaha", formatRupiah(totalPendapatanUsaha), true)}
+          ${infoMoney("Nilai Aset Tanah", us.asetTanah)}
+          ${infoMoney("Nilai Aset Non Bangunan", us.asetNonBangunan)}
+          ${infoNum("Luas Bangunan", parseFloat(us.luasBangunan) || 0, "m²")}
+        </div>
+      </div>`;
+    });
+    html += `</div></div>`;
+  }
+
+  // ---- 3. Pendapatan & Pengeluaran Rumah Tangga (bersebelahan) ----
+  html += `<div class="detail-section">
+    <div class="section-heading"><div class="section-icon">3</div><h2>Pendapatan &amp; Pengeluaran Rumah Tangga</h2></div>
+    <div class="member-grid">
+      <div class="member-card">
+        <div class="card-title"><strong>Gaji Suami &amp; Istri</strong></div>
+        <div class="info-grid single">
+          ${infoMoney("Suami — kerja", p.suamiKerja)}
+          ${infoMoney("Suami — usaha sendiri", p.suamiUsaha)}
+          ${infoMoney("Suami — transfer/pensiun", p.suamiTransfer)}
+          ${infoMoney("Istri — kerja", p.istriKerja)}
+          ${infoMoney("Istri — usaha sendiri", p.istriUsaha)}
+          ${infoMoney("Istri — transfer/pensiun", p.istriTransfer)}
+        </div>
+      </div>
+      <div class="member-card">
+        <div class="card-title"><strong>Tagihan &amp; Kebutuhan</strong></div>
+        <div class="info-grid single">
+          ${infoMoney("Listrik/bulan", g.listrik)}
+          ${infoMoney("WiFi/bulan", g.wifi)}
+          ${infoMoney("Non-makan bulanan", g.nonMakanBulanan)}
+          ${infoMoney("Makan/minggu (×4)", g.makanMinggu * 4)}
+          ${infoMoney("Non-makan tahunan (÷12)", g.nonMakanTahunan / 12)}
+        </div>
+      </div>
+    </div>
+  </div>`;
+
+  // ---- 4. Ringkasan ----
+  const selisihClass = s.selisih > 0 ? "plus" : (s.selisih < 0 ? "minus" : "");
+  html += `<div class="detail-section">
+    <div class="section-heading"><div class="section-icon">4</div><h2>Ringkasan</h2></div>
+    <div class="summary-grid">
+      <div class="summary-card"><span>Pendapatan RT</span><strong>${formatRupiah(s.pendapatanRumahTangga)}</strong></div>
+      <div class="summary-card"><span>Pendapatan Usaha</span><strong>${formatRupiah(s.pendapatanUsaha)}</strong></div>
+      <div class="summary-card"><span>Pengeluaran RT</span><strong>${formatRupiah(s.pengeluaranRumahTangga)}</strong></div>
+      <div class="summary-card"><span>Pengeluaran Usaha</span><strong>${formatRupiah(s.pengeluaranUsaha)}</strong></div>
+    </div>
+    <div class="final-balance">
+      <span>Selisih Bulanan (Total Pendapatan − Total Pengeluaran)</span>
+      <strong class="${selisihClass}">${formatRupiah(s.selisih)}</strong>
+    </div>
+  </div>`;
+
+  html += `</div>`; // /detail-content
+  return html;
 }
 
-async function init() {
-  const loading = document.getElementById("loading");
-  const content = document.getElementById("detailContent");
-  const id = new URLSearchParams(location.search).get("id");
+/* ---------- ambil id dari alamat halaman (?id=...) lalu tampilkan ---------- */
+async function muatDetail(){
+  const params = new URLSearchParams(location.search);
+  const id = params.get("id");
 
-  if (!id) {
-    loading.style.display = "none";
-    content.innerHTML = '<div class="empty-note">ID data tidak ditemukan.</div>';
+  if(!id){
+    loadingEl.style.display = "none";
+    contentEl.innerHTML = `<p class="empty-note">ID data tidak ditemukan di alamat halaman.</p>`;
     return;
   }
 
-  try {
-    const response = await fetch(DATA_URL);
-    if (!response.ok) throw new Error("Data gagal dimuat");
+  try{
+    const res = await fetch(`${API_URL}/detail.php?id=${encodeURIComponent(id)}`);
+    if(!res.ok) throw new Error("Data tidak ditemukan");
+    const row = await res.json();
 
-    const data = await response.json();
-    const keluarga = (data.keluarga || []).find(
-      item => String(item.id) === String(id)
-    );
+    const record = {
+      tanggal: row.created_at,
+      petugas: row.petugas,
+      umum: {
+        kkNama: row.kk_nama,
+        noUrutBangunan: row.no_urut_bangunan,
+        jenisBangunan: row.jenis_bangunan,
+        anggotaMenetap: row.anggota_menetap,
+        idListrik: row.id_listrik,
+        kkTertaut: row.kkTertaut || []
+      },
+      pendapatanRT: {
+        suamiKerja: +row.suami_kerja, suamiUsaha: +row.suami_usaha, suamiTransfer: +row.suami_transfer,
+        istriKerja: +row.istri_kerja, istriUsaha: +row.istri_usaha, istriTransfer: +row.istri_transfer
+      },
+      pengeluaranRT: {
+        listrik: +row.listrik, wifi: +row.wifi, nonMakanBulanan: +row.nonmakan_bulanan,
+        makanMinggu: +row.makan_minggu, nonMakanTahunan: +row.nonmakan_tahunan
+      },
+      usahaList: (row.usahaList || []).map(u => ({
+        namaPengusaha: u.nama_pengusaha, namaUsaha: u.nama_usaha, alamat: u.alamat,
+        nib: u.nib, kegiatan: u.kegiatan, lokasi: u.lokasi,
+        karyawanL: +u.karyawan_l, karyawanP: +u.karyawan_p,
+        karyawanDibayar: +u.karyawan_dibayar, karyawanTidakDibayar: +u.karyawan_tidak_dibayar,
+        tahunMulai: u.tahun_mulai,
+        gaji: +u.gaji, biayaProduksi: +u.biaya_produksi, biayaPembelian: +u.biaya_pembelian,
+        biayaOperasional: +u.biaya_operasional, biayaNonOperasional: +u.biaya_non_operasional,
+        pendapatanUtama: +u.pendapatan_utama, pendapatanLainnya: +u.pendapatan_lainnya,
+        asetTanah: +u.aset_tanah, asetNonBangunan: +u.aset_non_bangunan, luasBangunan: u.luas_bangunan,
+        jenisUsaha: u.jenisUsaha || []
+      })),
+      ringkasan: {
+        pendapatanRumahTangga: +row.pendapatan_rumah_tangga,
+        pendapatanUsaha: +row.pendapatan_usaha,
+        totalPendapatan: +row.total_pendapatan,
+        pengeluaranRumahTangga: +row.pengeluaran_rumah_tangga,
+        pengeluaranUsaha: +row.pengeluaran_usaha,
+        totalPengeluaran: +row.total_pengeluaran,
+        selisih: +row.selisih
+      }
+    };
 
-    if (!keluarga) throw new Error("Data tidak ditemukan");
-
-    document.title = `Sensus Taek — ${keluarga.kk_nama || "Detail"}`;
-    loading.style.display = "none";
-    content.innerHTML = buildDetailHtml(keluarga);
-  } catch (error) {
-    console.error(error);
-    loading.textContent = "Gagal memuat detail. Pastikan dibuka menggunakan Live Server.";
+    contentEl.innerHTML = buildDetailHtml(record);
+  }catch(e){
+    contentEl.innerHTML = `<p class="empty-note">Data tidak ditemukan, mungkin sudah dihapus.</p>`;
+    console.error(e);
+  }finally{
+    loadingEl.style.display = "none";
   }
 }
 
-init();
+muatDetail();
