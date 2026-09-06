@@ -1,102 +1,104 @@
-/* ================================================================
-   js/daftar.js — dipakai oleh index.html (Halaman Hasil / Daftar)
-   Ganti API_URL sesuai lokasi folder "api" di server Anda.
-   ================================================================ */
-   const API_URL = "http://localhost/SENSUS/api";
+const DATA_URL = "data/data.json";
 
-   const loadingEl = document.getElementById("loading");
-   const emptyEl   = document.getElementById("tabelKosong");
-   const tableEl   = document.getElementById("tabelDaftar");
-   const tbodyEl   = document.getElementById("tabelDaftarBody");
-   const tabsEl    = document.getElementById("petugasTabs");
-   
-   let semuaData   = [];
-   let filterAktif = "all";
-   
-   function formatRupiah(num){
-     const rounded = Math.round(num || 0);
-     const sign = rounded < 0 ? "-" : "";
-     const abs = Math.abs(rounded).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-     return "Rp " + sign + abs;
-   }
-   
-   function formatTanggal(iso){
-     try{
-       return new Date(iso).toLocaleString("id-ID", { day:"numeric", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit" });
-     }catch(e){ return iso; }
-   }
-   
-   function escapeHtml(str){
-     const d = document.createElement("div");
-     d.textContent = str == null ? "" : String(str);
-     return d.innerHTML;
-   }
-   
-   /* ---------- render tabel sesuai filter petugas yang aktif ---------- */
-   function renderTabel(){
-     const data = filterAktif === "all"
-       ? semuaData
-       : semuaData.filter(item => item.petugas === filterAktif);
-   
-     if(!data || data.length === 0){
-       emptyEl.style.display = "block";
-       tableEl.style.display = "none";
-       return;
-     }
-     emptyEl.style.display = "none";
-     tableEl.style.display = "table";
-     tbodyEl.innerHTML = "";
-   
-     data.forEach(item=>{
-       const tr = document.createElement("tr");
-       const selisih = Number(item.selisih);
-       const selisihClass = selisih > 0 ? "sel-plus" : (selisih < 0 ? "sel-minus" : "");
-       tr.innerHTML = `
-         <td>${escapeHtml(item.nama)}</td>
-         <td style="text-align:right;white-space:nowrap;">
-           <a class="btn-lihat" href="detail.html?id=${encodeURIComponent(item.id)}">Lihat</a>
-           <button type="button" class="btn-hapus-row" data-id="${item.id}">Hapus</button>
-         </td>`;
-       tbodyEl.appendChild(tr);
-     });
-   }
-   
-   /* ---------- ambil data dari server ---------- */
-   async function muatDaftar(){
-     loadingEl.style.display = "block";
-     emptyEl.style.display = "none";
-     tableEl.style.display = "none";
-     try{
-       const res = await fetch(`${API_URL}/daftar.php`);
-       semuaData = await res.json();
-     }catch(e){
-       console.error("Gagal mengambil daftar:", e);
-       semuaData = [];
-     }
-     loadingEl.style.display = "none";
-     renderTabel();
-   }
-   
-   /* ---------- klik tab petugas ---------- */
-   tabsEl.addEventListener("click", (e)=>{
-     const tab = e.target.closest(".tab-petugas");
-     if(!tab) return;
-     e.preventDefault();
-     tabsEl.querySelectorAll(".tab-petugas").forEach(t => t.classList.remove("active"));
-     tab.classList.add("active");
-     filterAktif = tab.dataset.val;
-     renderTabel();
-   });
-   
-   /* ---------- klik tombol Hapus di baris tabel ---------- */
-   tbodyEl.addEventListener("click", async (e)=>{
-     if(!e.target.classList.contains("btn-hapus-row")) return;
-     const id = e.target.dataset.id;
-     if(!confirm("Hapus data ini dari daftar?")) return;
-     try{
-       await fetch(`${API_URL}/hapus.php?id=${encodeURIComponent(id)}`, { method: "DELETE" });
-     }catch(err){ console.error(err); }
-     await muatDaftar();
-   });
-   
-   muatDaftar();
+let semuaData = [];
+let petugasAktif = "all";
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function formatRupiah(value) {
+  const n = Number(value || 0);
+  return "Rp " + new Intl.NumberFormat("id-ID").format(n);
+}
+
+function formatTanggal(value) {
+  if (!value) return "-";
+  const d = new Date(String(value).replace(" ", "T"));
+  if (Number.isNaN(d.getTime())) return escapeHtml(value);
+  return d.toLocaleDateString("id-ID", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric"
+  });
+}
+
+function renderDaftar() {
+  const body = document.getElementById("tabelDaftarBody");
+  const table = document.getElementById("tabelDaftar");
+  const empty = document.getElementById("tabelKosong");
+
+  const rows = petugasAktif === "all"
+    ? semuaData
+    : semuaData.filter(r => String(r.petugas || "") === petugasAktif);
+
+  body.innerHTML = "";
+
+  if (!rows.length) {
+    table.style.display = "none";
+    empty.style.display = "block";
+    empty.textContent = petugasAktif === "all"
+      ? "Belum ada data yang disimpan."
+      : `Belum ada data untuk petugas ${petugasAktif}.`;
+    return;
+  }
+
+  empty.style.display = "none";
+  table.style.display = "table";
+
+  rows.forEach(r => {
+    const selisih = Number(r.selisih || 0);
+    const tr = document.createElement("tr");
+
+    tr.innerHTML = `
+      <td>
+        <div class="nama-kk">${escapeHtml(r.kk_nama || "-")}</div>
+      </td>
+
+      <td>
+        <a class="btn-lihat" href="detail.html?id=${encodeURIComponent(r.id)}">
+          Lihat
+        </a>
+      </td>
+    `;
+
+    body.appendChild(tr);
+  });
+}
+
+async function init() {
+  try {
+    const response = await fetch(DATA_URL);
+    if (!response.ok) throw new Error("Data gagal dimuat");
+
+    const data = await response.json();
+    semuaData = Array.isArray(data.keluarga) ? data.keluarga : [];
+
+    document.getElementById("loading").style.display = "none";
+    renderDaftar();
+  } catch (error) {
+    console.error(error);
+    const loading = document.getElementById("loading");
+    loading.textContent = "Gagal memuat data. Jalankan folder ini dengan Live Server.";
+  }
+}
+
+document.querySelectorAll(".tab-petugas").forEach(tab => {
+  tab.addEventListener("click", event => {
+    event.preventDefault();
+
+    document.querySelectorAll(".tab-petugas")
+      .forEach(t => t.classList.remove("active"));
+
+    tab.classList.add("active");
+    petugasAktif = tab.dataset.val;
+    renderDaftar();
+  });
+});
+
+init();
